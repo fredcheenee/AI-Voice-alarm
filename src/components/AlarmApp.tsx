@@ -3,15 +3,16 @@ import { useAlarms } from '../hooks/useAlarms';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { parseAlarmCommand } from '../lib/gemini';
 import { AlarmItem } from './AlarmItem';
-import { Mic, MicOff, Send, Loader2, Clock, Volume2 } from 'lucide-react';
+import { Mic, MicOff, Send, Loader2, Clock, Volume2, History, X, Plus, BellRing, BellOff, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function AlarmApp() {
-  const { alarms, addAlarm, removeAlarm, toggleAlarm, stopRinging } = useAlarms();
+  const { alarms, history, addAlarm, removeAlarm, toggleAlarm, stopRinging } = useAlarms();
   const { isListening, transcript, startListening, stopListening, hasSupport } = useSpeechRecognition();
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Sync transcript to input text
   useEffect(() => {
@@ -53,12 +54,41 @@ export function AlarmApp() {
     }
   };
 
+  const getHistoryIcon = (type: string) => {
+    switch (type) {
+      case 'created': return <Plus className="w-4 h-4 text-emerald-500" />;
+      case 'rang': return <BellRing className="w-4 h-4 text-indigo-500" />;
+      case 'stopped': return <BellOff className="w-4 h-4 text-slate-500" />;
+      case 'deleted': return <Trash2 className="w-4 h-4 text-red-500" />;
+      default: return <Clock className="w-4 h-4 text-slate-500" />;
+    }
+  };
+
+  const getHistoryText = (type: string, label: string) => {
+    switch (type) {
+      case 'created': return <span>Created alarm <strong>{label}</strong></span>;
+      case 'rang': return <span>Alarm <strong>{label}</strong> rang</span>;
+      case 'stopped': return <span>Stopped alarm <strong>{label}</strong></span>;
+      case 'deleted': return <span>Deleted alarm <strong>{label}</strong></span>;
+      default: return <span>{label}</span>;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
       <div className="max-w-2xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
         
         {/* Header */}
-        <header className="mb-12 text-center">
+        <header className="mb-12 text-center relative">
+          <button 
+            onClick={() => setShowHistory(true)}
+            className="absolute right-0 top-0 p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors flex items-center gap-2"
+            title="View History"
+          >
+            <History className="w-5 h-5" />
+            <span className="text-sm font-medium hidden sm:inline">History</span>
+          </button>
+
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-6 shadow-lg shadow-indigo-200">
             <Clock className="w-8 h-8" />
           </div>
@@ -162,6 +192,68 @@ export function AlarmApp() {
         </section>
 
       </div>
+
+      {/* History Modal */}
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6"
+            onClick={() => setShowHistory(false)}
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden"
+            >
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-600" />
+                  Alarm History
+                </h2>
+                <button 
+                  onClick={() => setShowHistory(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="overflow-y-auto p-2 flex-1">
+                {history.length === 0 ? (
+                  <div className="text-center py-12 px-4">
+                    <History className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                    <p className="text-slate-500 font-medium">No history yet</p>
+                    <p className="text-slate-400 text-sm mt-1">Events will appear here when you create or trigger alarms.</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-1 p-2">
+                    {history.map(event => (
+                      <li key={event.id} className="flex items-start gap-3 p-3 hover:bg-slate-50 rounded-xl transition-colors">
+                        <div className="mt-0.5 p-2 bg-white border border-slate-100 rounded-lg shadow-sm">
+                          {getHistoryIcon(event.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-700 leading-tight">
+                            {getHistoryText(event.type, event.alarmLabel)}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

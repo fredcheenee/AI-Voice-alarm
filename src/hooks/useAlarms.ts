@@ -1,10 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Alarm } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Alarm, AlarmEvent } from '../types';
 import { ParsedAlarm } from '../lib/gemini';
 import { playAlarmSound } from '../lib/audio';
 
 export function useAlarms() {
   const [alarms, setAlarms] = useState<Alarm[]>([]);
+  const [history, setHistory] = useState<AlarmEvent[]>([]);
+  
+  // Use a ref to access current alarms in callbacks without adding them to dependency arrays
+  const alarmsRef = useRef(alarms);
+  useEffect(() => {
+    alarmsRef.current = alarms;
+  }, [alarms]);
+
+  const logEvent = useCallback((alarmLabel: string, type: AlarmEvent['type']) => {
+    setHistory(prev => [{
+      id: Math.random().toString(36).substring(2, 9),
+      alarmLabel,
+      timestamp: Date.now(),
+      type
+    }, ...prev].slice(0, 50)); // Keep last 50 events
+  }, []);
 
   // Function to calculate the next target time based on parsed alarm
   const calculateNextTargetTime = (parsed: ParsedAlarm, fromTime: number = Date.now()): number => {
@@ -39,11 +55,16 @@ export function useAlarms() {
     };
     
     setAlarms(prev => [...prev, newAlarm]);
-  }, []);
+    logEvent(parsed.label, 'created');
+  }, [logEvent]);
 
   const removeAlarm = useCallback((id: string) => {
+    const alarm = alarmsRef.current.find(a => a.id === id);
+    if (alarm) {
+      logEvent(alarm.parsed.label, 'deleted');
+    }
     setAlarms(prev => prev.filter(a => a.id !== id));
-  }, []);
+  }, [logEvent]);
 
   const toggleAlarm = useCallback((id: string) => {
     setAlarms(prev => prev.map(a => {
@@ -61,6 +82,10 @@ export function useAlarms() {
   }, []);
 
   const stopRinging = useCallback((id: string) => {
+    const alarm = alarmsRef.current.find(a => a.id === id);
+    if (alarm) {
+      logEvent(alarm.parsed.label, 'stopped');
+    }
     setAlarms(prev => prev.map(a => {
       if (a.id === id) {
         if (a.parsed.recurring) {
@@ -81,17 +106,20 @@ export function useAlarms() {
       }
       return a;
     }));
-  }, []);
+  }, [logEvent]);
 
   // Check alarms every second
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
+      let newlyRinging: string[] = [];
+      
       setAlarms(prev => {
         let hasChanges = false;
         const next = prev.map(a => {
           if (a.isActive && !a.isRinging && now >= a.targetTime) {
             hasChanges = true;
+            newlyRinging.push(a.parsed.label);
             
             if (a.parsed.recurring) {
               // Play sound immediately for the loop
@@ -121,6 +149,18 @@ export function useAlarms() {
         });
         return hasChanges ? next : prev;
       });
+      
+      if (newlyRinging.length > 0) {
+        setHistory(prev => {
+          const newEvents = newlyRinging.map(label => ({
+            id: Math.random().toString(36).substring(2, 9),
+            alarmLabel: label,
+            timestamp: now,
+            type: 'rang' as const
+          }));
+          return [...newEvents, ...prev].slice(0, 50);
+        });
+      }
     }, 1000);
     
     return () => clearInterval(interval);
@@ -144,6 +184,7 @@ export function useAlarms() {
 
   return {
     alarms,
+    history,
     addAlarm,
     removeAlarm,
     toggleAlarm,

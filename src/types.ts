@@ -8,3 +8,10 @@ export interface Alarm {
   isActive: boolean;
   isRinging: boolean;
 }
+
+export interface AlarmEvent {
+  id: string;
+  alarmLabel: string;
+  timestamp: number;
+  type: 'created' | 'rang' | 'stopped' | 'deleted';
+}
