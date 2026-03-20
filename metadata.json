@@ -1,0 +1,5 @@
+{
+  "name": "AI Voice Alarm",
+  "description": "Dictate natural language commands to set timers and alarms using AI.",
+  "requestFramePermissions": ["microphone"]
+}
